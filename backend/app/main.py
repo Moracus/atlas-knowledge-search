@@ -1,18 +1,12 @@
-from fastapi import Depends, FastAPI
-from sqlalchemy import text
-from sqlalchemy.orm import Session
+from fastapi import FastAPI
 
-from app.db.dependencies import get_db
+from app.api.documents import router as documents_router
 
 app = FastAPI(title="Atlas API")
+
+app.include_router(documents_router)
 
 
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
-
-
-@app.get("/health/db")
-def database_health(db: Session = Depends(get_db)):
-    result = db.execute(text("SELECT 1"))
-    return {"database": result.scalar()}
