@@ -1,14 +1,15 @@
 import uuid
 from pathlib import Path
 
-from fastapi import UploadFile
+from fastapi import UploadFile,HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.models import Document
-from app.repositories.documents import create_document
+from app.repositories.documents import create_document,get_all_documents,get_document_by_id,delete_document
+from uuid import UUID
+from app.core.config import settings
 
-
-STORAGE_DIR = Path("storage")
+STORAGE_DIR = Path(settings.storage_dir)
 
 
 def save_document(
@@ -38,3 +39,32 @@ def save_document(
     )
 
     return create_document(db, document)
+
+def list_documents(db: Session):
+    return get_all_documents(db)
+
+
+def get_document(db:Session,document_id:UUID)->Document|None:
+    document = get_document_by_id(db,document_id)
+    if document is None :
+        raise HTTPException(status_code=404,detail="Document not found")
+    return document
+
+def remove_document(
+    db: Session,
+    document_id: UUID,
+):
+    document = get_document_by_id(db, document_id)
+
+    if document is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        )
+
+    path = Path(document.storage_path)
+
+    if path.exists():
+        path.unlink()
+
+    delete_document(db, document)
