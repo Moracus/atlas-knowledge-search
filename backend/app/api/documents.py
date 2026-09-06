@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile,Request
 from sqlalchemy.orm import Session
 
 from uuid import UUID
 from app.db.dependencies import get_db
-from app.schemas.documents import DocumentResponse
+from app.schemas.documents import DocumentResponse, uploadResponse
 from app.services.documents import save_document,list_documents,remove_document,get_document
 from app.db.models import Document
 
@@ -11,14 +11,14 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 
 @router.post(
-    "",
-    response_model=DocumentResponse,
+    "", response_model= uploadResponse
 )
-def upload_document(
+async def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    return save_document(db, file)
+    return await save_document(db, file,request)
 
 @router.get("", response_model=list[DocumentResponse])
 def get_all_documents_route(

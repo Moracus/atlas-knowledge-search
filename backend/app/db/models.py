@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, String, BigInteger
+from sqlalchemy import DateTime, Enum, String, BigInteger,ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -13,6 +13,12 @@ class DocumentStatus(str, enum.Enum):
     uploaded = "uploaded"
     processing = "processing"
     ready = "ready"
+    failed = "failed"
+
+class JobStatus(str,enum.Enum):
+    queued = "queued"
+    processing = "processing"
+    completed = "completed"
     failed = "failed"
 
 
@@ -48,8 +54,8 @@ class Document(Base):
     )
 
     status: Mapped[DocumentStatus] = mapped_column(
-        Enum(DocumentStatus),
-        default=DocumentStatus.uploaded,
+    Enum(DocumentStatus),
+    default=DocumentStatus.uploaded,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -62,3 +68,14 @@ class Document(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class Job(Base):
+    __tablename__ = "jobs"
+    id : Mapped[uuid.UUID] = mapped_column(primary_key="true",default = uuid.uuid4)
+    document_id : Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id"))
+    status : Mapped[JobStatus] = mapped_column(Enum(JobStatus),default= JobStatus.queued)
+    progress: Mapped[int] = mapped_column(
+    default=0)
+    error_message : Mapped[str|None] = mapped_column(String(1000),default=None)
+    created_at : Mapped[datetime] = mapped_column(DateTime(timezone=True),server_default=func.now()) 

@@ -4,18 +4,21 @@ from pathlib import Path
 from fastapi import UploadFile,HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.models import Document
-from app.repositories.documents import create_document,get_all_documents,get_document_by_id,delete_document
+from app.db.models import Document,Job
+from app.repositories.documents import create_document,get_all_documents,get_document_by_id,delete_document,create_job
 from uuid import UUID
 from app.core.config import settings
+
+from fastapi import Request
 
 STORAGE_DIR = Path(settings.storage_dir)
 
 
-def save_document(
+async def save_document(
     db: Session,
     file: UploadFile,
-) -> Document:
+    request:Request
+) -> Job:
 
     document_id = uuid.uuid4()
 
@@ -38,7 +41,14 @@ def save_document(
         storage_path=str(storage_path),
     )
 
-    return create_document(db, document)
+    create_document(db, document)
+    job = service_create_job(db,document_id)
+    db.commit()
+    await request.app.state.redis.enqueue_job("process_document",job.id)
+
+    db.refresh(document)
+    db.refresh(job)
+    return job
 
 def list_documents(db: Session):
     return get_all_documents(db)
@@ -68,3 +78,14 @@ def remove_document(
         path.unlink()
 
     delete_document(db, document)
+    db.commit()
+
+def service_create_job(db:Session,document_id:UUID)->Job|None:
+    job_id = uuid.uuid4()
+    job = Job(id=job_id,
+              document_id=document_id,
+              )
+ 
+    return create_job(db,job)
+    
+    

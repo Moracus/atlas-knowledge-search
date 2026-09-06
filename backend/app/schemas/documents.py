@@ -18,3 +18,11 @@ class DocumentResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class uploadResponse(BaseModel):
+    document_id:UUID
+    id : UUID
+    status : str
+
+    model_config = ConfigDict(from_attributes=True)

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import select,desc
-from app.db.models import Document
+from app.db.models import Document,Job
 from uuid import UUID
 
 def create_document(
@@ -8,9 +8,6 @@ def create_document(
     document: Document,
 ) -> Document:
     db.add(document)
-    db.commit()
-    db.refresh(document)
-
     return document
 
 
@@ -27,10 +24,20 @@ def get_document_by_id(
     statement = select(Document).where(Document.id == document_id)
     return db.scalar(statement)
 
+def get_job_by_id(
+    db: Session,
+    job_id: UUID,
+) -> Document | None:
+    statement = select(Job).where(Job.id == job_id)
+    return db.scalar(statement)
+
 
 def delete_document(
     db: Session,
     document: Document,
 ) -> None:
     db.delete(document)
-    db.commit()
+
+def create_job(db:Session,job:Job)->Job:
+    db.add(job)
+    return job
