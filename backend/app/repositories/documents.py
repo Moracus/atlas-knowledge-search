@@ -24,6 +24,10 @@ def get_document_by_id(
     statement = select(Document).where(Document.id == document_id)
     return db.scalar(statement)
 
+def get_DocStatus_by_id(db:Session,document_id:UUID):
+    statement = select(Document.status).where(Document.id==document_id)
+    return db.scalar(statement)
+
 def get_job_by_id(
     db: Session,
     job_id: UUID,

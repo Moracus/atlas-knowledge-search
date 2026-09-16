@@ -5,7 +5,7 @@ from fastapi import UploadFile,HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.models import Document,Job
-from app.repositories.documents import create_document,get_all_documents,get_document_by_id,delete_document,create_job
+from app.repositories.documents import create_document,get_all_documents,get_document_by_id,delete_document,create_job,get_DocStatus_by_id
 from uuid import UUID
 from app.core.config import settings
 
@@ -44,7 +44,7 @@ async def save_document(
     create_document(db, document)
     job = service_create_job(db,document_id)
     db.commit()
-    await request.app.state.redis.enqueue_job("process_document",job.id)
+    await request.app.state.redis.enqueue_job("process_document",str(job.id))
 
     db.refresh(document)
     db.refresh(job)
@@ -59,6 +59,12 @@ def get_document(db:Session,document_id:UUID)->Document|None:
     if document is None :
         raise HTTPException(status_code=404,detail="Document not found")
     return document
+
+def service_get_doc_status_by_id(db:Session,document_id:UUID):
+    status = get_DocStatus_by_id(db,document_id)
+    if status is None :
+          raise HTTPException(status_code=404,detail="Document not found")
+    return status
 
 def remove_document(
     db: Session,

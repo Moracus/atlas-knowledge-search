@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from app.db.dependencies import get_db
 from app.schemas.documents import DocumentResponse, uploadResponse
-from app.services.documents import save_document,list_documents,remove_document,get_document
+from app.services.documents import save_document,list_documents,remove_document,get_document,service_get_doc_status_by_id
 from app.db.models import Document
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -31,6 +31,9 @@ def get_all_documents_route(
 def get_documents_by_id_route(document_id:UUID,db:Session=Depends(get_db)):
     return get_document(db,document_id)
 
+@router.get("/status/{document_id}",status_code=200)
+def get_status(document_id:UUID,db:Session=Depends(get_db)):
+    return service_get_doc_status_by_id(db,document_id)
 
 @router.delete("/{document_id}", status_code=204)
 def delete_document_route(

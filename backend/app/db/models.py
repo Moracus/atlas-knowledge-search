@@ -35,6 +35,7 @@ class Document(Base):
     original_filename: Mapped[str] = mapped_column(
         String(255)
     )
+    extracted_path: Mapped[str | None] # plain text
 
     content_type: Mapped[str] = mapped_column(
         String(100)
