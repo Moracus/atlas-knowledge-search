@@ -1,8 +1,10 @@
 import enum
 import uuid
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy import DateTime, Enum, String, BigInteger,ForeignKey, Integer
+from sqlalchemy.dialects.postgresql import ARRAY, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -80,3 +82,55 @@ class Job(Base):
     default=0)
     error_message : Mapped[str|None] = mapped_column(String(1000),default=None)
     created_at : Mapped[datetime] = mapped_column(DateTime(timezone=True),server_default=func.now()) 
+
+
+
+class Chunk(Base):
+    __tablename__ = "chunks"
+
+    id: Mapped[UUID] = mapped_column(
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    document_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("documents.id"),
+        nullable=False,
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    text: Mapped[str] = mapped_column(nullable=False)
+
+    file_path: Mapped[str] = mapped_column(String, nullable=False)
+    file_name: Mapped[str] = mapped_column(String, nullable=False)
+    repo_name: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    language: Mapped[str] = mapped_column(String, nullable=False)
+    chunk_type: Mapped[str] = mapped_column(String, nullable=False)
+
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    start_line: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_line: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    heading_hierarchy: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String),
+        nullable=True,
+    )
+
+    dependencies: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String),
+        nullable=True,
+    )
+
+    summary: Mapped[str | None] = mapped_column(nullable=True)
+
+    embedding_status: Mapped[str] = mapped_column(String, nullable=False)
+    summary_status: Mapped[str] = mapped_column(String, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )

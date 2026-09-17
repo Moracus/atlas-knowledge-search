@@ -18,6 +18,7 @@ TEXT_EXTENSIONS = {
 class ExtractionResult:
     path:str
     characters: int
+    text : str
 
 
 class IngestionService:
@@ -50,7 +51,7 @@ class IngestionService:
 
         # return text
 
-        return ExtractionResult(path=output,characters=len(text))
+        return ExtractionResult(path=output,characters=len(text),text=text)
 
     def detect_type(self, path: Path) -> str:
         if path.suffix.lower() == ".pdf":
@@ -67,6 +68,7 @@ class IngestionService:
         raise ValueError("Unknown document type")
 
     def extract_text(self, path: Path) -> str:
+        """Pure extraction. Used by CLI and worker."""
         return path.read_text(
             encoding="utf-8",
             errors="ignore"
