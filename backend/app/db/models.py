@@ -23,6 +23,11 @@ class JobStatus(str,enum.Enum):
     completed = "completed"
     failed = "failed"
 
+class ProcessingStatus(str,enum.Enum):
+    pending = "pending"
+    processing = "processing"
+    completed = "completed"
+    failed = "failed"
 
 class Document(Base):
     __tablename__ = "documents"
@@ -126,8 +131,19 @@ class Chunk(Base):
 
     summary: Mapped[str | None] = mapped_column(nullable=True)
 
-    embedding_status: Mapped[str] = mapped_column(String, nullable=False)
-    summary_status: Mapped[str] = mapped_column(String, nullable=False)
+    embedding_status : Mapped[ProcessingStatus]= mapped_column(
+       Enum(ProcessingStatus),
+        nullable=False,
+        default=ProcessingStatus.pending,
+        server_default="pending",
+    )
+
+    summary_status : Mapped[ProcessingStatus]= mapped_column(
+       Enum(ProcessingStatus),
+        nullable=False,
+        default=ProcessingStatus.pending,
+        server_default="pending",
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

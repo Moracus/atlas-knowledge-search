@@ -43,7 +43,7 @@ async def process_document(ctx, job_id: str):
 
         chunks = chunk_service.chunk_file(
             text= result.text,
-            file_path=result.path
+            file_path=doc.storage_path
         )
 
         chunk_models = [
@@ -82,7 +82,7 @@ async def process_document(ctx, job_id: str):
 
         if job:
             job.status = JobStatus.failed
-            job.error_message = str(e)
+            job.error_message = f"{type(e).__name__}: {e.orig}"
 
         if doc:
             doc.status = DocumentStatus.failed
