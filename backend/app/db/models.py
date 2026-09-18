@@ -43,7 +43,8 @@ class Document(Base):
         String(255)
     )
     extracted_path: Mapped[str | None] # plain text
-
+    relative_path: Mapped[str | None]
+    repo_name :Mapped[str | None]
     content_type: Mapped[str] = mapped_column(
         String(100)
     )

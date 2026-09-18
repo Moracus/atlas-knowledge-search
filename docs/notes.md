@@ -249,3 +249,269 @@ The ingestion layer should remain unchanged even as indexing evolves.
 # Guiding Principle
 
 > **Ingestion converts files into normalized text. Retrieval intelligence belongs in later layers, not inside the parser.**
+
+
+## 2. Chunkers return data, not database models
+
+Rejected:
+
+```python
+PythonChunker(db).chunk(...)
+```
+
+Chosen:
+
+```python
+chunks = PythonChunker().chunk(...)
+```
+
+Every chunker returns a list of `ChunkData` objects, which are pure domain models.
+
+The orchestration layer (`IngestApplication`) is responsible for converting them into SQLAlchemy `Chunk` models and persisting them.
+
+**Reason:**
+
+- Easier unit testing
+- Reusable from CLI and HTTP
+- No nested database sessions
+- Chunkers remain framework-independent
+
+---
+
+## 3. Structure over fixed-size chunks
+
+Atlas does **not** chunk by token count.
+
+Primary semantic boundaries are:
+
+- imports
+- classes
+- functions
+- methods
+
+Current implementation uses **Tree-sitter** to extract these structural nodes rather than arbitrary line ranges.
+
+Example:
+
+```python
+class AuthService:
+    def login(self):
+        ...
+```
+
+Produces two retrieval units:
+
+- `class → AuthService`
+- `method → AuthService.login`
+
+This preserves both architectural and implementation context.
+
+Recursive splitting for oversized functions is intentionally deferred.
+
+---
+
+## 4. Multi-language AST support
+
+V0 supports two programming languages using Tree-sitter:
+
+| Language | Parser |
+|----------|--------|
+| Python | `tree-sitter-python` |
+| JavaScript | `tree-sitter-javascript` |
+
+Language selection is centralized through:
+
+```python
+BaseChunker.detect_language(file_path)
+```
+
+The `ChunkingService` acts as the dispatcher:
+
+```
+.py  → PythonChunker
+.js  → JavaScriptChunker
+```
+
+This keeps callers completely unaware of parser implementations and makes adding future languages (TypeScript, Go, Rust) a one-line registration.
+
+---
+
+# CLI vs HTTP Ingestion Pipelines
+
+Atlas now has **two entrypoints** that share the exact same indexing pipeline.
+
+## CLI (Repository Ingestion)
+
+```
+atlas ingest ./my-repo
+        │
+        ▼
+RepositoryScanner
+        │
+        ▼
+IngestApplication.ingest_local_file()
+        │
+        ▼
+Copy → storage/uploads
+        │
+        ▼
+IngestionService
+        │
+        ▼
+ChunkingService
+        │
+        ▼
+Persist Document + Chunks
+```
+
+The scanner recursively discovers supported files and preserves their **repository-relative paths**.
+
+Example:
+
+```
+src/auth/service.py
+```
+
+becomes the canonical path stored in the database.
+
+---
+
+## HTTP (Single File Upload)
+
+```
+UploadFile
+     │
+     ▼
+save_document()
+     │
+     ▼
+Create pending Document + Job
+     │
+     ▼
+ARQ Worker
+     │
+     ▼
+IngestApplication.ingest_existing_document()
+     │
+     ▼
+IngestionService
+     │
+     ▼
+ChunkingService
+     │
+     ▼
+Persist Chunks
+```
+
+Unlike the CLI, HTTP does not have repository context.
+
+For uploaded files:
+
+```
+relative_path = original filename
+```
+
+Example:
+
+```
+auth.py
+```
+
+The worker never performs scanning; it simply consumes the already-created `Document`.
+
+---
+
+# Relative Path Strategy
+
+A new `relative_path` field exists on `Document`.
+
+This is intentionally different from `storage_path`.
+
+| Field | Purpose |
+|--------|---------|
+| `storage_path` | Internal Atlas filesystem location |
+| `relative_path` | Original repository location used for retrieval and citations |
+
+Example:
+
+```
+storage_path
+storage/uploads/91ab3d.py
+
+relative_path
+src/auth/service.py
+```
+
+Chunk metadata always uses `relative_path`, never the storage location.
+
+---
+
+# Current Limitations
+
+- Only Python and JavaScript are AST-supported.
+- Markdown chunker is not implemented.
+- Fallback chunker for unsupported languages is not implemented.
+- Large functions/classes are not recursively split.
+- Dependency extraction is still empty.
+- Heading hierarchy exists in the schema but is unused until Markdown support.
+- `.gitignore` is not respected yet by `RepositoryScanner`.
+- CLI indexes repositories sequentially (no parallel workers).
+
+---
+
+# Future Improvements
+
+## Background enrichment
+
+Chunk creation intentionally finishes **before** any AI processing.
+
+Future asynchronous pipeline:
+
+```
+Chunk
+ │
+ ├── Embedding Worker
+ │      ↓
+ │   pgvector
+ │
+ └── Summary Worker
+        ↓
+   LLM summary
+```
+
+Both update existing chunk rows without blocking ingestion.
+
+---
+
+## Markdown Chunker
+
+Markdown should become a first-class structural parser.
+
+Planned metadata:
+
+- heading hierarchy
+- section boundaries
+- start/end lines
+- heading-based chunk types
+
+This will allow documentation retrieval to behave similarly to code retrieval.
+
+---
+
+## Repository Discovery
+
+`RepositoryScanner` is intentionally minimal in V0.
+
+Planned additions:
+
+- `.gitignore` support
+- configurable ignore patterns
+- binary file detection
+- parallel file discovery
+- language statistics during indexing
+
+---
+
+# Guiding Principle
+
+> **Chunking identifies semantic units. Embeddings, summaries, and retrieval intelligence enrich those units later, but should never be required to create them.**

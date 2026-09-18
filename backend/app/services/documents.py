@@ -39,6 +39,7 @@ async def save_document(
         content_type=file.content_type or "application/octet-stream",
         size_bytes=size_bytes,
         storage_path=str(storage_path),
+        relative_path = file.filename or "Untitled"
     )
 
     create_document(db, document)

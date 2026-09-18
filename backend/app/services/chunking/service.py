@@ -20,6 +20,9 @@ class ChunkingService:
         if language == "python":
             return self.python.chunk(text, file_path)
 
+        if language == "javascript":
+            return self.javascript.chunk(text, file_path)
+
         # TODO
         # if language == "markdown":
         #     return self.markdown.chunk(...)

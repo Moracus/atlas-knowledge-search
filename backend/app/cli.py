@@ -1,42 +1,83 @@
-import typer
+import asyncio
 from pathlib import Path
 
-from app.services.chunking.service import ChunkingService
-from app.services.ingestion.service import IngestionService
+import typer
 
-app = typer.Typer()
+from app.application.ingest import IngestApplication
+from app.core.discovery.scanner import RepositoryScanner
+from app.db.database import SessionLocal
+
+app = typer.Typer(
+    help="Atlas CLI - Structure-aware repository indexing"
+)
+
 
 @app.command()
-def ingest(path: str):
-    print("=="*50)
-    print(path)
-    file = Path(path)
-    print(file)
+def ingest(repo: str):
+    """
+    Index an entire repository into Atlas.
+    """
 
-    if not file.exists():
-        typer.echo("File not found.")
+    repo_path = Path(repo).resolve()
+
+    if not repo_path.exists():
+        typer.secho("Repository does not exist.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    ingestion = IngestionService()
-    chunker = ChunkingService()
+    if not repo_path.is_dir():
+        typer.secho("Path must be a directory.", fg=typer.colors.RED)
+        raise typer.Exit(1)
 
-    text = ingestion.extract_text(file)
+    asyncio.run(_ingest_repo(repo_path))
 
-    chunks = chunker.chunk_file(
-        text=text,
-        file_path=str(file),
+
+async def _ingest_repo(repo_path: Path):
+    scanner = RepositoryScanner()
+    files = scanner.scan(repo_path)
+
+    if not files:
+        typer.secho("No supported files found.", fg=typer.colors.YELLOW)
+        return
+
+    typer.secho(
+        f"Found {len(files)} supported files\n",
+        fg=typer.colors.GREEN,
     )
 
-    typer.echo(f"\nGenerated {len(chunks)} chunks\n")
+    db = SessionLocal()
+    ingest_app = IngestApplication(db)
 
-    for i, chunk in enumerate(chunks):
-        typer.echo("=" * 60)
-        typer.echo(f"[{i}] {chunk.chunk_type}")
-        typer.echo(f"Name : {chunk.name}")
-        typer.echo(f"Lines: {chunk.start_line}-{chunk.end_line}")
-        typer.echo("-" * 60)
-        typer.echo(chunk.text)
+    indexed = 0
+
+    try:
+        for i, file in enumerate(files, start=1):
+            typer.echo(
+                f"[{i}/{len(files)}] {file.relative_path}",
+                nl=False,
+            )
+
+            try:
+                await ingest_app.ingest_local_file(
+                    absolute_path=file.absolute_path,
+                    relative_path=file.relative_path,
+                    repo_name=repo_path.name,
+                )
+
+                indexed += 1
+                typer.secho("  ✓", fg=typer.colors.GREEN)
+
+            except Exception as e:
+                db.rollback()
+                typer.secho(f"  ✗ {e}", fg=typer.colors.RED)
+
         typer.echo()
+        typer.secho("Indexing complete!", fg=typer.colors.GREEN, bold=True)
+        typer.echo(f"Repository : {repo_path.name}")
+        typer.echo(f"Documents  : {indexed}/{len(files)}")
+
+    finally:
+        db.close()
+
 
 if __name__ == "__main__":
     app()
