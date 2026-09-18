@@ -64,12 +64,12 @@ class IngestApplication:
         create_document(self.db, document)
         self.db.flush()
 
-        await self._run_pipeline(document)
+        chunks = await self._run_pipeline(document)
 
         self.db.commit()
         self.db.refresh(document)
 
-        return document
+        return chunks
 
     # ------------------------------------------------------------------
     # WORKER ENTRYPOINT
@@ -136,4 +136,6 @@ class IngestApplication:
 
         await self.chunk_repo.create_many(chunk_models)
 
+
         document.status = DocumentStatus.ready
+        return chunk_models

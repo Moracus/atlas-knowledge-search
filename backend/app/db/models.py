@@ -7,7 +7,8 @@ from sqlalchemy import DateTime, Enum, String, BigInteger,ForeignKey, Integer
 from sqlalchemy.dialects.postgresql import ARRAY, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
-
+from pgvector.sqlalchemy import Vector
+from app.core.config import settings
 from app.db.database import Base
 
 
@@ -120,6 +121,11 @@ class Chunk(Base):
     start_line: Mapped[int] = mapped_column(Integer, nullable=False)
     end_line: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    embedding: Mapped[list[float]] = mapped_column(
+    Vector(settings.EMBEDDING_DIMENSIONS),
+    nullable=True,
+)
+
     heading_hierarchy: Mapped[list[str] | None] = mapped_column(
         ARRAY(String),
         nullable=True,
@@ -145,6 +151,8 @@ class Chunk(Base):
         default=ProcessingStatus.pending,
         server_default="pending",
     )
+
+    
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
