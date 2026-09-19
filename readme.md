@@ -14,10 +14,10 @@ A production-oriented Retrieval-Augmented Generation (RAG) backend built with **
 - ✅ Document upload & persistence
 - ✅ Job model for async processing
 - ✅ Redis integration
-- ⏳ ARQ background workers
-- ⏳ Document chunking pipeline
-- ⏳ Embedding generation
-- ⏳ Vector search
+- ✅ ARQ background workers
+- ✅ Document chunking pipeline
+-✅ Embedding generation
+- ✅ Vector search
 - ⏳ RAG query endpoint
 - ⏳ Authentication
 - ⏳ Docker production deployment
