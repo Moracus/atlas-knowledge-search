@@ -25,6 +25,8 @@ FIELDS = [
     Field("EMBEDDING_PROVIDER", "Embedding provider", default="qwen"),
     Field("EMBEDDING_MODEL", "Embedding model", default="Qwen/Qwen3-Embedding-0.6B"),
     Field("EMBEDDING_DIMENSIONS", "Embedding dimensions", default="1024"),
+    Field("OPENROUTER_API_KEY", "openrouter api key",  required=True),
+    Field("OPENAI_API_KEY", "openai api key",  required=True)
 ]
 KEYS = {f.key for f in FIELDS}
 

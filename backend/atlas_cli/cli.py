@@ -145,15 +145,22 @@ async def _init_workspace(root: Path):
 # ---------------------------------------------------------------------
 
 @app.command()
-def ask(query: str, k: int = 5):
+def ask(
+    query: str,
+    k: int = 10,
+    model: str = "gpt-5",
+):
+    """Ask questions about the current workspace."""
+
     from app.core.workspace.discovery import find_workspace_root
     from app.core.workspace.session import WorkspaceSessionManager
     from app.db.database import SessionLocal
     from app.embeddings.service import EmbeddingService
     from app.services.vector_search import VectorSearchService
-    """
-    Ask questions about the current workspace.
-    """
+    from app.retrieval.assembler import ContextAssembler
+    from app.llm.factory import get_llm_provider
+
+    import asyncio
 
     root = find_workspace_root()
 
@@ -165,39 +172,54 @@ def ask(query: str, k: int = 5):
         raise typer.Exit(1)
 
     metadata = WorkspaceSessionManager.load(root)
-
     db = SessionLocal()
 
     try:
+        # 1. Retrieve relevant chunks
         search = VectorSearchService(db, EmbeddingService())
 
-        results = search.search(
+        chunks = search.search(
             query=query,
             session_id=metadata.session_id,
             k=k,
         )
 
-        if not results:
+        if not chunks:
             typer.secho("No matching chunks found.", fg=typer.colors.YELLOW)
             return
 
-        typer.echo()
-        typer.secho(f'Query: "{query}"', bold=True)
-        typer.echo()
+        # 2. Assemble LLM context
+        assembler = ContextAssembler()
+        messages, sources = assembler.build(query, chunks)
 
-        for i, chunk in enumerate(results, start=1):
-            typer.secho(
-                f"[{i}] {chunk.file_path}:{chunk.start_line}-{chunk.end_line}",
-                fg=typer.colors.CYAN,
+        # 3. Generate answer
+        provider = get_llm_provider()
+
+        typer.echo()
+        typer.secho(f'Question: "{query}"', bold=True)
+        typer.secho("Thinking...\n", fg=typer.colors.BLUE)
+
+        answer = asyncio.run(
+            provider.generate(
+                messages=messages,
+                model=model,
             )
+        )
 
-            typer.echo(chunk.text[:300].strip())
-            typer.echo("-" * 60)
+        # 4. Render output
+        typer.echo(answer)
+        typer.echo()
+
+        typer.secho("Sources", bold=True, fg=typer.colors.GREEN)
+        typer.echo("-" * 40)
+
+        for src in sources:
+            typer.echo(
+                f"[{src.id}] {src.file_path}:{src.start_line}-{src.end_line}"
+            )
 
     finally:
         db.close()
-
-
 # ---------------------------------------------------------------------
 # STATUS
 # ---------------------------------------------------------------------
