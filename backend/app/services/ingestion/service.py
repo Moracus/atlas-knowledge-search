@@ -4,6 +4,7 @@ import pymupdf  # PyMuPDF
 from uuid import UUID
 from app.db.models import Document
 from dataclasses import dataclass
+from app.core.config import settings
 
 TEXT_EXTENSIONS = {
     ".txt", ".md",
@@ -23,35 +24,25 @@ class ExtractionResult:
 
 class IngestionService:
 
-    async def ingest(self, file_path: str,document_id:str) -> str:
+    async def ingest(self, file_path: str, document_id: str) -> ExtractionResult:
         path = Path(file_path)
 
         file_type = self.detect_type(path)
 
         if file_type == "pdf":
             text = self.extract_pdf(path)
-
         elif file_type == "text":
             text = self.extract_text(path)
-
         else:
             raise ValueError(f"Unsupported file type: {path.suffix}")
 
-        
+        output_dir = Path(settings.storage_dir).expanduser() / "extracted"
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-        output = f"storage/extracted/{document_id}.txt"
+        output = output_dir / f"{document_id}.txt"
+        output.write_text(text, encoding="utf-8")
 
-        Path(output).write_text(text, encoding="utf-8")
-
-
-        # Later -> save into chunks / embeddings
-        # print("=" * 50)
-        # print(text[:1500])
-        # print("=" * 50)
-
-        # return text
-
-        return ExtractionResult(path=output,characters=len(text),text=text)
+        return ExtractionResult(path=str(output), characters=len(text), text=text)
 
     def detect_type(self, path: Path) -> str:
         if path.suffix.lower() == ".pdf":

@@ -67,6 +67,11 @@ class Document(Base):
     Enum(DocumentStatus),
     default=DocumentStatus.uploaded,
     )
+    session_id: Mapped[UUID] = mapped_column(
+    PG_UUID(as_uuid=True),
+    ForeignKey("workspace_sessions.id", ondelete="CASCADE"),
+    nullable=False,
+)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -157,5 +162,45 @@ class Chunk(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
+        nullable=False,
+    )
+
+
+
+class WorkspaceSession(Base):
+    __tablename__ = "workspace_sessions"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    repo_name: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+    )
+
+    root_path: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        unique=True,
+    )
+
+    embedding_model: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    last_accessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
         nullable=False,
     )

@@ -514,4 +514,428 @@ Planned additions:
 
 # Guiding Principle
 
+
+
 > **Chunking identifies semantic units. Embeddings, summaries, and retrieval intelligence enrich those units later, but should never be required to create them.**
+
+
+# Chunking & Retrieval Pipeline
+
+> Status: **Implemented (V0)** with known limitations documented below.
+
+This document explains **why the ingestion + chunking + embedding pipeline is designed the way it is**, and what is intentionally left for later iterations.
+
+---
+
+# Design Goals
+
+The pipeline follows one guiding rule:
+
+> **Every stage produces data for the next stage.**
+
+No stage should re-discover information from the database if it was already produced upstream.
+
+Pipeline:
+
+```text
+Repository
+    │
+    ▼
+Repository Scanner
+    │
+    ▼
+Language Chunker (AST / Markdown)
+    │
+    ▼
+ChunkData
+    │
+    ▼
+Database Models
+    │
+    ▼
+Embedding Service
+    │
+    ▼
+pgvector
+    │
+    ▼
+Vector Search
+```
+
+Each layer has a single responsibility and can be replaced independently.
+
+---
+
+# 1. Chunkers return data, not ORM models
+
+**Decision**
+
+Chunkers return plain `ChunkData` objects instead of SQLAlchemy models.
+
+Rejected:
+
+```python
+PythonChunker(db).chunk(...)
+```
+
+Chosen:
+
+```python
+chunks = PythonChunker().chunk(...)
+```
+
+The ingestion application is responsible for converting these into database models.
+
+### Why?
+
+- Chunkers become pure functions.
+- Easier unit testing.
+- No database dependency inside parsing logic.
+- Same chunker can later be reused by CLI, HTTP, or workers.
+
+---
+
+# 2. Ingestion owns persistence
+
+`IngestApplication` is the orchestration layer.
+
+Responsibilities:
+
+- create document
+- invoke correct chunker
+- persist chunks
+- return created chunks
+
+It **does not** generate embeddings.
+
+Embeddings are treated as an indexing stage that happens after chunk creation.
+
+---
+
+# 3. Batch embedding instead of per-file embedding
+
+Initial idea:
+
+```text
+file
+ ├─ chunk
+ ├─ embed
+ └─ save
+```
+
+Final design:
+
+```text
+Scan repository
+        │
+Chunk every file
+        │
+Collect created chunks
+        │
+Batch embed
+        │
+Persist vectors
+```
+
+### Why?
+
+Transformer models are significantly faster when encoding batches.
+
+The CLI keeps all created chunks in memory and performs one batched embedding call at the end of indexing.
+
+This avoids unnecessary model invocations while keeping the pipeline simple.
+
+---
+
+# 4. Embedding provider architecture
+
+Embeddings are designed to be **swappable without changing application code**.
+
+Structure:
+
+```text
+embeddings/
+├── base.py
+├── qwen.py
+├── registry.py
+└── service.py
+```
+
+Responsibilities:
+
+| File | Responsibility |
+|------|----------------|
+| `base.py` | Provider interface |
+| `qwen.py` | Qwen implementation |
+| `registry.py` | Provider selection + singleton cache |
+| `service.py` | Public embedding API |
+
+The rest of Atlas depends only on `EmbeddingService`, never on Qwen directly.
+
+Current provider:
+
+- `Qwen/Qwen3-Embedding-0.6B`
+- 1024-dimensional embeddings
+- cosine similarity
+
+---
+
+# 5. Why vectors live on Chunk
+
+Every chunk owns exactly one embedding.
+
+Chosen:
+
+```text
+Chunk
+ ├─ text
+ ├─ metadata
+ └─ embedding
+```
+
+Rejected:
+
+```text
+Chunk
+Embedding
+```
+
+A separate embedding table adds joins without providing flexibility in V0.
+
+If Atlas later supports multiple embedding models simultaneously, the ownership model may change.
+
+---
+
+# 6. Vector search
+
+Retrieval is isolated inside `VectorSearchService`.
+
+Responsibilities:
+
+1. Embed query
+2. Perform cosine similarity search
+3. Return ranked chunks
+
+The service **does not** know about CLI or FastAPI.
+
+Current SQL shape:
+
+```sql
+chunks
+JOIN documents
+WHERE documents.session_id = ?
+ORDER BY embedding <=> query_vector
+LIMIT k
+```
+
+The search boundary is the **workspace session**, not repository name.
+
+---
+
+# 7. Workspace sessions
+
+Atlas intentionally behaves like Git or Codex CLI.
+
+Instead of:
+
+```bash
+atlas ingest /path/to/repo
+```
+
+the intended workflow is:
+
+```bash
+cd my-project
+
+atlas init
+atlas ask "where is auth implemented?"
+```
+
+Each workspace creates:
+
+```text
+.atlas/
+└── session.json
+```
+
+`session.json` stores only metadata:
+
+- session UUID
+- repository root
+- embedding model
+- Atlas version
+
+Embeddings remain in PostgreSQL.
+
+The database ownership hierarchy is:
+
+```text
+WorkspaceSession
+        │
+    Documents
+        │
+      Chunks
+```
+
+Chunks never store `session_id` directly; it is inherited through `Document`.
+
+---
+
+# Current CLI pipeline (Implemented)
+
+```text
+atlas init
+      │
+      ▼
+Scan repository
+      │
+      ▼
+Chunk files
+      │
+      ▼
+Persist documents + chunks
+      │
+      ▼
+Batch embeddings
+      │
+      ▼
+Store vectors
+      │
+      ▼
+Workspace ready
+```
+
+Query flow:
+
+```text
+atlas ask
+      │
+Find .atlas/session.json
+      │
+      ▼
+session_id
+      │
+      ▼
+VectorSearchService
+      │
+      ▼
+Top-K chunks
+```
+
+Implemented commands:
+
+- `atlas init`
+- `atlas ask`
+- `atlas status`
+- `atlas clean`
+
+---
+
+# What is intentionally NOT implemented yet
+
+## 1. Incremental indexing ❌
+
+Current behavior:
+
+- Every `atlas init` creates a fresh index.
+- Files are always chunked and embedded.
+- Duplicate indexing is possible if cleanup is skipped.
+
+Desired behavior:
+
+```text
+File
+ │
+SHA-256 hash
+ │
+ ├── unchanged → skip
+ └── changed   → replace chunks + embeddings
+```
+
+This requires a `content_hash` field on `Document`.
+
+Status: **Planned**
+
+---
+
+## 2. Document version tracking ❌
+
+There is currently no notion of document versions.
+
+Missing fields:
+
+- `content_hash`
+- `updated_at` comparison
+- version history
+
+The goal is **replacement**, not append-only indexing.
+
+Status: **Planned**
+
+---
+
+## 3. Redundancy mitigation ❌
+
+Chunk redundancy has **not** been evaluated yet.
+
+Known questions:
+
+- Same repository indexed twice
+- Duplicate chunks across different files
+- Duplicate chunks across different workspaces
+
+Current strategy:
+
+- Do nothing.
+- Preserve all chunks.
+
+Reason: correctness is preferred over premature deduplication.
+
+Status: **Research + testing pending**
+
+---
+
+## 4. Re-index workflow ❌
+
+Missing command:
+
+```bash
+atlas reindex
+```
+
+Expected behavior:
+
+- detect modified files
+- delete old chunks
+- recreate embeddings
+- remove deleted files
+
+Status: **Planned**
+
+---
+
+# Known limitations
+
+| Limitation | Status |
+|------------|--------|
+| Incremental indexing | ❌ |
+| File content hashing | ❌ |
+| Duplicate detection | ❌ |
+| Re-index command | ❌ |
+| Workspace sessions | ✅ |
+| Batch embeddings | ✅ |
+| Local semantic retrieval | ✅ |
+| Swappable embedding providers | ✅ |
+
+---
+
+# Why this architecture?
+
+The important architectural decision is that **chunking is deterministic, embeddings are derived, and retrieval is stateless**.
+
+- **Chunkers** understand structure.
+- **Embeddings** make chunks searchable.
+- **Vector search** retrieves relevance.
+- **CLI** only orchestrates these layers.
+
+This separation allows the same backend to later support HTTP workers, incremental indexing, reranking, and cloud embedding providers without rewriting the core pipeline.

@@ -13,8 +13,9 @@ from app.repositories.documents import create_document
 from app.repositories.chunk import ChunkRepository
 from app.services.chunking.service import ChunkingService
 from app.services.ingestion.service import IngestionService
+from app.core.paths import CONFIG_DIR
 
-UPLOAD_DIR = Path("storage/uploads")
+UPLOAD_DIR = Path(f"{CONFIG_DIR}/storage/uploads")
 
 
 class IngestApplication:
@@ -33,6 +34,7 @@ class IngestApplication:
         absolute_path: Path,
         relative_path: str,
         repo_name: str | None = None,
+        session_id:str | None =None
     ) -> Document:
         """
         Used by: atlas ingest ./repo
@@ -59,6 +61,7 @@ class IngestApplication:
             relative_path=relative_path,
             repo_name=repo_name,
             status=DocumentStatus.processing,
+            session_id=session_id
         )
 
         create_document(self.db, document)

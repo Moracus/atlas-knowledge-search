@@ -22,11 +22,10 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.db.database import Base
-from app.core.config import Settings
+from app.core.config import settings
 from app.db import models  # import models so metadata is registered
 
 config = context.config
-settings = Settings()
 
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
