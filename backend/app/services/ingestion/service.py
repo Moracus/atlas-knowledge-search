@@ -12,7 +12,7 @@ TEXT_EXTENSIONS = {
     ".cpp", ".c", ".hpp", ".h",
     ".java", ".go", ".rs",
     ".html", ".css", ".json",
-    ".yml", ".yaml", ".xml"
+    ".yml", ".yaml", ".xml",".jsx"
 }
 
 @dataclass

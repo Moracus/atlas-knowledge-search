@@ -34,46 +34,42 @@ class IngestApplication:
         absolute_path: Path,
         relative_path: str,
         repo_name: str | None = None,
-        session_id:str | None =None
-    ) -> Document:
-        """
-        Used by: atlas ingest ./repo
-
-        Creates the Document row, copies the file into Atlas storage,
-        then runs the normal ingestion pipeline.
-        """
-
+        session_id: str | None = None,
+    ) -> list[Chunk]:          # was -> Document, but you return chunks
         document_id = uuid.uuid4()
         extension = absolute_path.suffix
 
         storage_path = UPLOAD_DIR / f"{document_id}{extension}"
         storage_path.parent.mkdir(parents=True, exist_ok=True)
-
         shutil.copy2(absolute_path, storage_path)
 
-        document = Document(
-            id=document_id,
-            name=absolute_path.name,
-            original_filename=absolute_path.name,
-            content_type="text/plain",  # improve later with mimetypes
-            size_bytes=storage_path.stat().st_size,
-            storage_path=str(storage_path),
-            relative_path=relative_path,
-            repo_name=repo_name,
-            status=DocumentStatus.processing,
-            session_id=session_id
-        )
+        try:
+            document = Document(
+                id=document_id,
+                name=absolute_path.name,
+                original_filename=absolute_path.name,
+                content_type="text/plain",
+                size_bytes=storage_path.stat().st_size,
+                storage_path=str(storage_path),
+                relative_path=relative_path,
+                repo_name=repo_name,
+                status=DocumentStatus.processing,
+                session_id=session_id,
+            )
 
-        create_document(self.db, document)
-        self.db.flush()
+            create_document(self.db, document)
+            self.db.flush()
 
-        chunks = await self._run_pipeline(document)
+            chunks = await self._run_pipeline(document)
 
-        self.db.commit()
-        self.db.refresh(document)
-
-        return chunks
-
+            self.db.commit()
+            self.db.refresh(document)
+            return chunks
+        except Exception:
+            # the CLI's db.rollback() removes the Document row,
+            # but not the file we copied, so clean it up here
+            storage_path.unlink(missing_ok=True)
+            raise
     # ------------------------------------------------------------------
     # WORKER ENTRYPOINT
     # ------------------------------------------------------------------

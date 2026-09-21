@@ -107,8 +107,9 @@ class Chunk(Base):
 
     document_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("documents.id"),
+        ForeignKey("documents.id",ondelete="CASCADE"),
         nullable=False,
+        
     )
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
 

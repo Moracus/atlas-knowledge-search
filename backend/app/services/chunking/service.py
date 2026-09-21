@@ -1,34 +1,31 @@
-# app/services/chunking/service.py
-
 from app.services.chunking.base import BaseChunker, ChunkData
 from app.services.chunking.code.python import PythonChunker
 from app.services.chunking.code.javascript import JavaScriptChunker
+from app.services.chunking.errors import (
+    ChunkingError,
+    ChunkerFailedError,
+    UnsupportedLanguageError,
+)
 
 
 class ChunkingService:
     def __init__(self):
-        self.python = PythonChunker()
-        self.javascript = JavaScriptChunker()
+        self._chunkers: dict[str, BaseChunker] = {
+            "python": PythonChunker(),
+            "javascript": JavaScriptChunker(),
+            # "markdown": MarkdownChunker(),  # TODO
+        }
 
-    def chunk_file(
-        self,
-        *,
-        text: str,
-        file_path: str,
-    ) -> list[ChunkData]:
-
+    def chunk_file(self, *, text: str, file_path: str) -> list[ChunkData]:
         language = BaseChunker.detect_language(file_path)
+        chunker = self._chunkers.get(language)
 
-        if language == "python":
-            return self.python.chunk(text, file_path)
+        if chunker is None:
+            raise UnsupportedLanguageError(file_path, language)
 
-        if language == "javascript":
-            return self.javascript.chunk(text, file_path)
-
-        # TODO
-        # if language == "markdown":
-        #     return self.markdown.chunk(...)
-
-        # TODO
-        # return self.fallback.chunk(...)
-        return []
+        try:
+            return chunker.chunk(text, file_path)
+        except ChunkingError:
+            raise
+        except Exception as e:
+            raise ChunkerFailedError(file_path, language, e) from e

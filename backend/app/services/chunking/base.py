@@ -56,9 +56,9 @@ class BaseChunker(ABC):
         mapping = {
             ".py": "python",
             ".js": "javascript",
+            ".jsx":"javascript",
             ".ts": "typescript",
-            ".tsx": "tsx",
-            ".jsx": "jsx",
+            ".tsx": "typescript",
             ".java": "java",
             ".go": "go",
             ".rs": "rust",

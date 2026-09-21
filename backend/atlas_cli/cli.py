@@ -49,6 +49,7 @@ async def _init_workspace(root: Path):
     from app.db.database import SessionLocal
     from app.db.models import ProcessingStatus, WorkspaceSession
     from app.embeddings.service import EmbeddingService
+    from app.services.chunking.errors import UnsupportedLanguageError
     scanner = RepositoryScanner()
     files = scanner.scan(root)
 
@@ -95,7 +96,6 @@ async def _init_workspace(root: Path):
                 f"[{i}/{len(files)}] {file.relative_path}",
                 nl=False,
             )
-
             try:
                 created = await ingest.ingest_local_file(
                     absolute_path=file.absolute_path,
@@ -106,8 +106,11 @@ async def _init_workspace(root: Path):
 
                 chunks.extend(created)
                 indexed += 1
-
                 typer.secho("  ✓", fg=typer.colors.GREEN)
+
+            except UnsupportedLanguageError as e:
+                db.rollback()
+                typer.secho(f"  – skipped ({e.language or 'unknown'})", fg=typer.colors.YELLOW)
 
             except Exception as e:
                 db.rollback()
@@ -268,27 +271,54 @@ def status():
 # CLEAN
 # ---------------------------------------------------------------------
 
+
+def _delete_session(db, session_id) -> None:
+    from sqlalchemy import delete, select
+    from app.core.config import settings
+    from app.db.models import Chunk, Document, WorkspaceSession
+
+    doc_ids_q = select(Document.id).where(Document.session_id == session_id)
+    doc_ids = db.scalars(doc_ids_q).all()
+
+    db.execute(delete(Chunk).where(Chunk.document_id.in_(doc_ids_q)))
+    db.execute(delete(Document).where(Document.session_id == session_id))
+    db.execute(delete(WorkspaceSession).where(WorkspaceSession.id == session_id))
+    db.commit()
+
+    # remove the extracted-text files written during ingestion
+    extracted = Path(settings.storage_dir).expanduser() / "extracted"
+    for doc_id in doc_ids:
+        (extracted / f"{doc_id}.txt").unlink(missing_ok=True)
+
+
 @app.command()
-    
-def clean(stale: bool = typer.Option(False, "--stale", help="Remove all stale workspaces")):
-    from sqlalchemy import delete
+def clean(
+    stale: bool = typer.Option(
+        False, "--stale", help="Remove workspaces whose folder no longer exists"
+    )
+):
+    """
+    Delete the current workspace or stale workspaces.
+    """
     from app.core.workspace.discovery import find_workspace_root
     from app.core.workspace.session import WorkspaceSessionManager
     from app.db.database import SessionLocal
     from app.db.models import WorkspaceSession
-    """
-    Delete the current workspace or stale workspaces.
-    """
 
     db = SessionLocal()
 
     try:
         if stale:
-            count = db.query(WorkspaceSession).delete()
-            db.commit()
+            stale_ids = [
+                s.id
+                for s in db.query(WorkspaceSession).all()
+                if not Path(s.root_path).exists()
+            ]
+            for sid in stale_ids:
+                _delete_session(db, sid)
 
             typer.secho(
-                f"Removed {count} stale workspace(s).",
+                f"Removed {len(stale_ids)} stale workspace(s).",
                 fg=typer.colors.GREEN,
             )
             return
@@ -301,23 +331,13 @@ def clean(stale: bool = typer.Option(False, "--stale", help="Remove all stale wo
 
         metadata = WorkspaceSessionManager.load(root)
 
-        db.execute(
-            delete(WorkspaceSession).where(
-                WorkspaceSession.id == metadata.session_id
-            )
-        )
-        db.commit()
-
+        _delete_session(db, metadata.session_id)
         WorkspaceSessionManager.delete(root)
 
-        typer.secho(
-            "Workspace cleaned successfully.",
-            fg=typer.colors.GREEN,
-        )
+        typer.secho("Workspace cleaned successfully.", fg=typer.colors.GREEN)
 
     finally:
         db.close()
-
-
+ 
 if __name__ == "__main__":
     app()
