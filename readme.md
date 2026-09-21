@@ -1,394 +1,241 @@
-# Atlas RAG Backend
+# Atlas
 
-A production-oriented Retrieval-Augmented Generation (RAG) backend built with **FastAPI**, **PostgreSQL**, **Redis**, **SQLAlchemy**, and asynchronous background processing.
+> Open-source, self-hostable RAG backend for developer knowledge.
 
-> **Current Status:** 🚧 In active development
+Atlas indexes code and documentation using structure-aware chunking, stores embeddings in PostgreSQL + pgvector, and retrieves the minimum relevant context for cloud LLMs. Repositories stay local—only retrieved context is sent to the LLM.
 
----
-
-# Features
-
-- ✅ FastAPI REST API
-- ✅ PostgreSQL with SQLAlchemy ORM
-- ✅ Alembic database migrations
-- ✅ Document upload & persistence
-- ✅ Job model for async processing
-- ✅ Redis integration
-- ✅ ARQ background workers
-- ✅ Document chunking pipeline
--✅ Embedding generation
-- ✅ Vector search
-- ⏳ RAG query endpoint
-- ⏳ Authentication
-- ⏳ Docker production deployment
+> **Current status:** V0 focuses entirely on the CLI workflow.
 
 ---
 
-# Architecture
+## Features
 
-```mermaid
-flowchart LR
-    A[Client] --> B[FastAPI API]
-
-    B --> C[(PostgreSQL)]
-    B --> D[(Redis)]
-
-    D --> E[ARQ Worker]
-
-    E --> F[Chunking]
-    F --> G[Embeddings]
-    G --> H[(Vector Store)]
-
-    B --> I[RAG Query]
-    I --> H
-    I --> J[LLM]
-    J --> A
-```
-
-### Request flow
-
-1. Client uploads a document.
-2. FastAPI stores document metadata in PostgreSQL.
-3. A processing job is created.
-4. Redis queues the job.
-5. ARQ worker performs chunking and embedding.
-6. Embeddings are stored in the vector database.
-7. User queries are matched against relevant chunks before calling the LLM.
+- Structure-aware chunking (Python + JavaScript via Tree-sitter)
+- Markdown and text document ingestion
+- Local repository indexing
+- Batch embedding pipeline
+- Semantic vector search with pgvector
+- OpenAI-compatible LLM providers
+- Workspace-based indexing (`.atlas/session.json`)
 
 ---
 
-# Tech Stack
-
-| Layer | Technology |
-|---|---|
-| API | FastAPI |
-| ORM | SQLAlchemy 2.0 |
-| Database | PostgreSQL |
-| Cache / Queue | Redis |
-| Background Jobs | ARQ |
-| Migrations | Alembic |
-| Validation | Pydantic |
-| Containerization | Docker & Docker Compose |
-
----
-
-# Project Structure
+## Architecture
 
 ```text
-atlas-rag/
-│
-├── app/
-│   ├── api/              # Route definitions
-│   ├── db/               # Database session & models
-│   ├── models/           # SQLAlchemy models
-│   ├── schemas/          # Pydantic schemas
-│   ├── services/         # Business logic
-│   ├── workers/          # ARQ worker (upcoming)
-│   └── main.py
-│
-├── alembic/
-│
-├── docker/
-│
-├── tests/
-│
-├── docker-compose.yml
-├── Dockerfile
-└── README.md
+              Local Repository
+                     │
+                     ▼
+            Repository Scanner
+                     │
+                     ▼
+        Tree-sitter / Text Chunkers
+                     │
+                     ▼
+                Chunk Objects
+                     │
+                     ▼
+         PostgreSQL + pgvector
+                     │
+                     ▼
+            Vector Similarity Search
+                     │
+                     ▼
+          Retrieved Context + Citations
+                     │
+                     ▼
+                 Cloud LLM
 ```
 
 ---
 
-# Getting Started
+## Tech Stack
 
-## 1. Clone the repository
+| Layer | Technology |
+|--------|------------|
+| Language | Python 3.12 |
+| CLI | Typer |
+| Database | PostgreSQL + pgvector |
+| ORM | SQLAlchemy |
+| Migrations | Alembic |
+| Queue | Redis |
+| Embeddings | Qwen3-Embedding-0.6B |
+| Parsing | Tree-sitter |
+
+---
+
+## Local Setup
+
+### 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/atlas-rag.git
-
-cd atlas-rag
+git clone https://github.com/your-username/atlas
+cd atlas
 ```
 
-## 2. Create environment file
+### 2. Create a virtual environment
+
+```bash
+python -m venv .venv
+
+# macOS / Linux
+source .venv/bin/activate
+
+# Windows
+.venv\Scripts\activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -e .
+```
+
+### 4. Start PostgreSQL
+
+Only PostgreSQL and redis runs in Docker.
+
+```bash
+docker compose up -d
+```
+
+This starts a Postgres instance with the `pgvector` extension enabled.
+
+### 5. Start Redis
+
+Run Redis 
+
+```bash
+see step 4
+```
+
+### 6. Configure environment
 
 Create a `.env` file:
 
 ```env
-DATABASE_URL=postgresql+psycopg://postgres:password@db:5432/atlas
-REDIS_URL=redis://redis:6379
-OPENAI_API_KEY=your_api_key
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/atlas
+REDIS_URL=redis://localhost:6379
+
+EMBEDDING_PROVIDER=qwen
+LLM_PROVIDER=openai
+
+OPENAI_API_KEY=your_key_here
 ```
 
-## 3. Run with Docker
-
-```bash
-docker compose up --build
-```
-
-Services:
-
-| Service | Port |
-|---|---|
-| FastAPI | 8000 |
-| PostgreSQL | 5432 |
-| Redis | 6379 |
-
-API will be available at:
-
-```text
-http://localhost:8000
-```
-
-Swagger docs:
-
-```text
-http://localhost:8000/docs
-```
-
----
-
-# Database Migrations
-
-Create migration:
-
-```bash
-alembic revision --autogenerate -m "message"
-```
-
-Apply migrations:
+### 7. Run migrations
 
 ```bash
 alembic upgrade head
 ```
 
-Rollback:
+Atlas is now ready.
+
+---
+
+## CLI Workflow
 
 ```bash
-alembic downgrade -1
+# Initialize current repository
+atlas init
+
+# Ask questions about the indexed project
+atlas ask "Where is authentication implemented?"
+
+# View workspace status
+atlas status
+
+# Remove the current workspace index
+atlas clean
 ```
+
+Detailed command documentation will live in a separate document.
 
 ---
 
-# API Documentation
+## Supported Files
 
-## Health Check
+### Code
 
-### GET `/health`
+- Python
+- JavaScript
 
-Returns API status.
+### Documents
 
-**Response**
+- Markdown
+- TXT
+- PDF
 
-```json
-{
-  "status": "ok"
-}
-```
-
----
-
-## Upload Document
-
-### POST `/documents`
-
-Upload a document for processing.
-
-**Request**
-
-Multipart form-data:
-
-| Field | Type |
-|---|---|
-| file | File |
-
-**Response**
-
-```json
-{
-  "document_id": "uuid",
-  "job_id": "uuid",
-  "status": "queued"
-}
-```
+Unsupported languages currently fall back to plain text ingestion (no AST chunking).
 
 ---
 
-## Get Document
+## How V0 Works
 
-### GET `/documents/{document_id}`
+1. Scan the repository
+2. Extract plain text where needed
+3. Chunk files using Tree-sitter (when supported)
+4. Store chunks and metadata
+5. Generate embeddings in batches
+6. Persist vectors to pgvector
+7. Retrieve top-k chunks during `atlas ask`
 
-Returns stored document metadata.
-
-**Response**
-
-```json
-{
-  "id": "uuid",
-  "filename": "notes.pdf",
-  "status": "completed"
-}
-```
+Embeddings are generated **after** chunk creation, making chunking deterministic and independent of the embedding model.
 
 ---
 
-## Get Job Status
+## Current Limitations
 
-### GET `/jobs/{job_id}`
+V0 intentionally keeps the indexing pipeline simple.
 
-Track asynchronous processing.
-
-**Response**
-
-```json
-{
-  "id": "uuid",
-  "status": "processing"
-}
-```
-
-Possible statuses:
-
-- `queued`
-- `processing`
-- `completed`
-- `failed`
+- No incremental indexing
+- No content hash tracking
+- No duplicate chunk detection
+- No reranking stage
+- Python and JavaScript are the only AST-supported languages
+- Markdown uses basic text chunking
+- `.gitignore` is not respected during repository scanning
+- Repository indexing is sequential
 
 ---
 
-## Future Endpoint
+## Future Improvements
 
-### POST `/query`
+### Retrieval
 
-Retrieve context and generate an LLM answer.
+- Incremental indexing via SHA-256 hashes
+- Re-index only modified files
+- Cross-encoder reranking
+- Hybrid search (BM25 + vector)
+- Metadata-aware retrieval
 
-**Request**
+### Parsing
 
-```json
-{
-  "query": "What is RAG?"
-}
-```
+- TypeScript support
+- Go / Rust parsers
+- Rich Markdown hierarchy
+- Dependency extraction
+- Recursive splitting of oversized functions
 
-**Planned Response**
+### Developer Experience
 
-```json
-{
-  "answer": "...",
-  "sources": []
-}
-```
-
----
-
-# Docker Setup
-
-### Docker Compose
-
-```yaml
-services:
-  api:
-    build: .
-    ports:
-      - "8000:8000"
-    depends_on:
-      - db
-      - redis
-
-  db:
-    image: postgres:17
-    ports:
-      - "5432:5432"
-
-  redis:
-    image: redis:8
-    ports:
-      - "6379:6379"
-```
-
-### Build manually
-
-```bash
-docker build -t atlas-rag .
-```
-
-Run:
-
-```bash
-docker run -p 8000:8000 atlas-rag
-```
+- Background embedding workers
+- Parallel repository indexing
+- HTTP API
+- VS Code extension
+- Multiple embedding provider support
 
 ---
 
-# Development Roadmap
-
-## Phase 1 — Foundation
-
-- [x] FastAPI project setup
-- [x] SQLAlchemy models
-- [x] PostgreSQL integration
-- [x] Alembic migrations
-- [x] Redis setup
-- [x] Job model
-
-## Phase 2 — Processing Pipeline
-
-- [ ] ARQ worker
-- [ ] Background job execution
-- [ ] PDF/Text extraction
-- [ ] Chunking strategy
-- [ ] Embedding generation
-
-## Phase 3 — Retrieval
-
-- [ ] Vector database integration
-- [ ] Similarity search
-- [ ] Metadata filtering
-- [ ] Top-K retrieval
-
-## Phase 4 — Generation
-
-- [ ] RAG query endpoint
-- [ ] Context assembly
-- [ ] LLM integration
-- [ ] Source citations
-
-## Phase 5 — Production
-
-- [ ] Authentication
-- [ ] Rate limiting
-- [ ] Logging & monitoring
-- [ ] CI/CD
-- [ ] Deployment
-
 ---
 
-# Current Database Models
+## Philosophy
 
-### Document
+Atlas separates the retrieval pipeline into independent layers:
 
-| Field | Type |
-|---|---|
-| id | UUID |
-| filename | String |
-| created_at | Timestamp |
+- **Chunkers** identify semantic units.
+- **Embeddings** make those units searchable.
+- **Vector search** retrieves relevant context.
+- **LLMs** generate answers from retrieved evidence.
 
-### Job
-
-| Field | Type |
-|---|---|
-| id | UUID |
-| document_id | UUID (FK) |
-| status | JobStatus |
-
-`JobStatus` enum:
-
-- queued
-- processing
-- completed
-- failed
-
----
-
-# Vision
-
-Atlas aims to be a modular RAG backend where ingestion, retrieval, and generation are cleanly separated, making it easy to swap embedding models, vector stores, or LLM providers without changing the API layer.
+The goal is not to send more context—it is to send **better context**.
